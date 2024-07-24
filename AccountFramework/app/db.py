@@ -1,12 +1,13 @@
 """
-Database used to store information about sessions and accounts
-We use the peewee ORM
+Database used to store information about sessions, etc..
+We use peewee as ORM to keep things readable
 """
 
 import datetime
 import os
 import pathlib
 import sys
+import peeweedbevolve
 
 from peewee import (
     BooleanField,
@@ -82,7 +83,9 @@ class Status(Model):
     Represents the status of a something
     """
 
-    active = BooleanField(help_text="Whether or not the Status is active")
+    active = BooleanField(
+        help_text="Whether or not the Status is active", aka="working"
+    )
     note = TextField(help_text="Description of the Status")
     name = TextField(help_text="Short name")
 
@@ -110,11 +113,11 @@ class Task(Timestamped):
         help_text="How the task should be processed. Currently only 'manual' or 'auto' exist.",
     )
     recording = BooleanField(
-        default=False,
-        help_text="Whether the task was recorded with codegen or not (no recording is used if bitwarden is used)",
+        default=False, help_text="Whether the task was recorded with codegen or not"
     )
     note = TextField(default="", help_text="Additional notes for a task.")
 
+    # TODO: What should it do?
     def claim():
         pass
         # print(__class__)
@@ -166,9 +169,15 @@ class Session(Timestamped):
         null=True,
         default=None,
         help_text="Who created the session (i.e., who performed the login task)",
+        aka="creator",
     )
-    session_status = ForeignKeyField(SessionStatus, help_text="Session information")
-    login_result = ForeignKeyField(LoginResult, help_text="Login information")
+    session_status = ForeignKeyField(
+        SessionStatus, help_text="Session information", aka="status_id"
+    )
+    login_result = ForeignKeyField(
+        LoginResult, help_text="Login information", aka="login_id"
+    )
+    # TODO: maybe at some point we make this more complex. Then this will be a ForeignKeyField
     experiment = TextField(
         null=True,
         default=None,
@@ -223,10 +232,12 @@ class Website(Timestamped):
     origin = TextField(help_text="Origin")
     site = TextField(help_text="Site (etld+1)", unique=True)
     landing_page = TextField(help_text="Full URL of the origin landing page")
-    t_rank = IntegerField(help_text="Website rank according to Tranco")
-    c_bucket = IntegerField(help_text="Website bucket according to CrUX")
-    tranco_date = TextField(null=True, default=None, help_text="Tranco date")
-    crux_date = TextField(null=True, default=None, help_text="CrUX date")
+    t_rank = IntegerField(help_text="Website rank according to Tranco", aka="rank")
+    c_bucket = IntegerField(help_text="Website bucket according to CrUX", aka="bucket")
+    tranco_date = TextField(
+        null=True, default=None, help_text="Tranco date", aka="tranco"
+    )
+    crux_date = TextField(null=True, default=None, help_text="CrUX date", aka="crux")
 
     class Meta:
         database = db
@@ -248,7 +259,7 @@ class Identity(Timestamped):
     country = TextField(help_text="Country")
     zip_code = TextField(help_text="Zip code")
     city = TextField(help_text="City")
-    address = TextField(help_text="Address")
+    house_number = IntegerField(help_text='"Hausnummer"')
     birthday = DateField(help_text="Birthday")
     phone = TextField(help_text="Phone number")
     storage_json = TextField(
@@ -275,6 +286,7 @@ class Credentials(Timestamped):
     website = ForeignKeyField(
         Website, null=True, help_text="Website the credentials belong to"
     )
+    # TODO: add all properties of the identity that could change here?
 
     class Meta:
         database = db
@@ -303,13 +315,14 @@ class RegistrationResult(Result):
         table_name = "registration_result"
 
 
+# TODO: Single Sign On (SSO) support
 class Account(Timestamped):
     """
     Represents a single registered account for a website.
     Each account has exactly one credentials and exactly one session and belongs to exactly one website.
     """
 
-    actor = TextField(null=True, help_text="Who created the account")
+    actor = TextField(null=True, help_text="Who created the account", aka="creator")
     website = ForeignKeyField(
         Website, backref="accounts", help_text="Website the account belongs to"
     )
@@ -327,7 +340,7 @@ class Account(Timestamped):
         help_text="Active session (may be None)",
     )
     account_status = ForeignKeyField(
-        AccountStatus, null=True, help_text="Account status"
+        AccountStatus, null=True, help_text="Account status", aka="status_id"
     )
     registration_result = ForeignKeyField(
         RegistrationResult, null=True, help_text="Registration information"
@@ -366,6 +379,7 @@ class LoginTask(Task):
     login_result = ForeignKeyField(
         LoginResult, null=True, help_text="Outcome of the login task"
     )
+    # TODO: add session that got created as a result here? (similar to account in RegisterTask)
 
     class Meta:
         database = db
@@ -379,7 +393,9 @@ class ValidateTask(Task):
     If, e.g., the account got suspended, the account status may also be changed.
     """
 
-    session = ForeignKeyField(Session, help_text="Session to re-validation")
+    session = ForeignKeyField(
+        Session, help_text="Session to re-validation", aka="account_id"
+    )  # Aka=account_id is only for debug migrations and does not make sense
     validate_result = TextField(default="", help_text="Outcome of the validation task")
 
     class Meta:
@@ -413,6 +429,11 @@ class RegisterTask(Task):
     class Meta:
         database = db
         table_name = "register_tasks"
+        # TODO: does not work for repeated tasks due to recording issues (figure out a better way later)
+        # Unique on website and identity
+        # indexes = (
+        #    (('identity', 'website'), True),
+        # )
 
 
 # =========================== #
@@ -443,17 +464,18 @@ class ExperimentWebsite(Timestamped):
         indexes = ((("website", "experiment"), True),)
 
 
-def initialize_db():
+def initialize_db(evolve=False):
     # ===========================#
     #           CONFIG           #
     # ===========================#
     # Copy config to the BAF
-    aapath = str((pathlib.Path(__file__).parent / "account_automation").resolve())
+    bafpath = str((pathlib.Path(__file__).parent / "baf").resolve())
     try:
+        # 1/0
         with open("config.py", "r") as config, open(
-            aapath + "/config.py", "w"
-        ) as configaa:
-            configaa.write(config.read())
+            bafpath + "/config.py", "w"
+        ) as configbaf:
+            configbaf.write(config.read())
     except Exception:
         # Ignored
         pass
@@ -477,20 +499,25 @@ def initialize_db():
         RegisterTask,
         ExperimentWebsite,
     ]
-    # These are the tables for the account automation
-    sys.path = [aapath] + sys.path
-    from account_automation.database import aa_Task, aa_URL
-    from account_automation.modules.findregistrationforms import aa_RegistrationForm
-    from account_automation.modules.findloginforms import aa_LoginForm
+    # These are the tables for the BAF
+    sys.path = [bafpath] + sys.path
+    from baf.database import URL
+    from baf.modules.savestats import URLFeedback
+    from baf.modules.findregistrationforms import RegistrationForm
+    from baf.modules.findloginforms import LoginForm
 
-    TABLES = TABLES + [aa_Task, aa_URL, aa_RegistrationForm, aa_LoginForm]
-    db.create_tables(TABLES)
+    TABLES = TABLES + [URL, URLFeedback, RegistrationForm, LoginForm]
+    if evolve:
+        db.evolve(TABLES)
+    else:
+        db.create_tables(TABLES)
 
     # ===========================#
     #    TABLE INITIALIZATION    #
     # ===========================#
     # add initial values to database, if database is empty
     if SessionStatus.select().count() == 0:
+
         # --- SessionStatus ---
         SessionStatus.create(
             active=True, name="active", note="Active session (logged-in)"
@@ -569,11 +596,13 @@ def initialize_db():
             name="partial",
             note="Partial: Account was created but the account is stuck at a startup screen or is not activated (e.g., a site requires a phone number after login)",
         )
+        # Question: split this up in several options?
         RegistrationResult.create(
             success=False,
             name="requirements",
             note="Requirements: Account could not be created due to unsatifsiable requirements (e.g., credit card or phone number required for registration)",
         )
+        # TODO: decide what to do with invalid registration pages found by the framework? Should workers search for registration pages manually as a fall back?
         RegistrationResult.create(
             success=False,
             name="no registration",
@@ -584,6 +613,9 @@ def initialize_db():
             name="language issues",
             note="Language issues: An account could not be created due to language issues",
         )
+        # TODO: Can this still happen? How should we handle it?
+        # Might happen if a website uses an account from a different site (e.g., youtube from google)?
+        # These should be filtered out by the initial BAF step, but there could be errors (especially if we allow the worker to search for registration options manually).
         RegistrationResult.create(
             success=False,
             name="duplicate",
@@ -609,4 +641,4 @@ def initialize_db():
 
 
 if __name__ == "__main__":
-    initialize_db()
+    initialize_db(evolve=True)
