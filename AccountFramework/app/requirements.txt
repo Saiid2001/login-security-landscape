@@ -12,3 +12,5 @@ watchdog==2.2.1
 tranco==0.6
 pandas==2.0.2
 httpx==0.24.1
+peewee-db-evolve==3.7.6
+baf==1.0
