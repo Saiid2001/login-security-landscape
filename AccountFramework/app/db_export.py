@@ -180,13 +180,16 @@ class Export(ABC):
         with open(file, "r") as f:
             data = json.load(f)
             cls.validate(data)
-            cls.load(data)
+            out = cls.load(data)
+            
+        return out
 
     @classmethod
     def load_from_json(cls, json_data: str):
         data = json.loads(json_data)
         cls.validate(data)
-        cls.load(data)
+        out = cls.load(data)
+        return out
 
     @staticmethod
     @abstractmethod
@@ -279,7 +282,7 @@ class TimelessExport(Export):
             json.dump(data, f, indent=4)
 
     @staticmethod
-    def load(data: dict):
+    def load(data: dict) -> List[int]:
     
 
         jsonschema.validate(data, TimelessExport.generate_schema())
@@ -344,6 +347,8 @@ class TimelessExport(Export):
             except Exception as e:
                 transaction.rollback()
                 raise e
+            
+            return list(credentials_id_map.values())
 
     @staticmethod
     def generate_schema():

@@ -100,6 +100,27 @@ def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int):
                 rank=rank,
             )
 
+def find_login_registration_forms(
+    crawlers:int
+) -> int:
+    try:
+        aa = subprocess.Popen(
+            [
+                "python3",
+                path_aa + "/main.py",
+                "--modules",
+                "FindRegistrationForms FindLoginForms",
+                "--job",
+                datetime.now().strftime("%Y%m%d"),
+                "--crawlers",
+                str(crawlers),
+            ]
+        )
+        aa.wait()
+    except Exception as e:
+        traceback.print_exc()
+        print(e)
+        return 1
 
 def crux_main(
     crux_link: str, start: int, count: int, identities: List[int], crawlers: int
@@ -120,27 +141,12 @@ def crux_main(
     _prepare_aa_urls(crux_link, start, end)
 
     # Search for registration and login forms with <CRAWLERS> crawlers
-    try:
-        print(
+    print(
             f"Searching for Login and Registration Forms on {count} Websites with {crawlers} parallel crawlers. This might take a while."
         )
-        aa = subprocess.Popen(
-            [
-                "python3",
-                path_aa + "/main.py",
-                "--modules",
-                "FindRegistrationForms FindLoginForms",
-                "--job",
-                datetime.now().strftime("%Y%m%d"),
-                "--crawlers",
-                str(crawlers),
-            ]
-        )
-        aa.wait()
-    except Exception as e:
-        traceback.print_exc()
-        print(e)
-        return 1
+    code = find_login_registration_forms(crawlers)
+    if code != 0:
+        return code
 
     print("Finished searching for forms. Adding Registration Tasks now.")
 
@@ -149,16 +155,16 @@ def crux_main(
         subquery = db.RegisterTask.select(db.RegisterTask.website)
         subquery = db.Website.select(db.Website.site).where(db.Website.id.in_(subquery))
         sites_regform = (
-            aa_RegistrationForm.select(
+            aa_RegistrationForm.select( # pylint: disable=used-before-assignment
                 aa_RegistrationForm.site
-            )  # pylint: disable=used-before-assignment
+            )  
             .distinct()
             .where(aa_RegistrationForm.site.not_in(subquery))
         )
-        sites_loginregform = (
-            aa_LoginForm.select(
+        sites_loginregform = ( 
+            aa_LoginForm.select( # pylint: disable=used-before-assignment
                 aa_LoginForm.site
-            )  # pylint: disable=used-before-assignment
+            )  
             .distinct()
             .where(aa_LoginForm.site.in_(sites_regform))
         )
@@ -177,6 +183,20 @@ def crux_main(
 
     return
 
+def add_aa_models(account: db.Account) -> int:
+    
+    if aa_LoginForm.select().where(aa_LoginForm.site == account.website.site).exists():
+        return
+    
+    aa_Task.create(
+                job=datetime.now().strftime("%Y%m%d"),
+                site=account.website.site,
+                url=account.website.origin,
+                landing_page=account.website.landing_page,
+                rank=account.website.t_rank,
+            )
+    
+    
 
 def import_main(file: str) -> int:
     """Import sites from JSON export of the database
@@ -187,23 +207,93 @@ def import_main(file: str) -> int:
     """
 
     file = pathlib.Path(file)
+    credentials_ids: List[int]
 
-    try:
+    with db.db.atomic() as en:
+        try:
 
-        if file.suffix != ".json":
-            raise ValueError(f"File {file} is not a JSON file")
+            if file.suffix != ".json":
+                raise ValueError(f"File {file} is not a JSON file")
 
-        if not file.exists():
-            raise FileNotFoundError(f"File {file} does not exist")
+            if not file.exists():
+                raise FileNotFoundError(f"File {file} does not exist")
+
+            # credentials_ids = TimelessExport.load_from_file(file)
+            credentials_ids = db.Credentials.select(db.Credentials.id)
+
+            # for each credentials add a login task
+
+            for credentials_id in credentials_ids:
+
+                credentials: db.Credentials = db.Credentials.get_by_id(credentials_id)
+                account = db.Account.get(credentials=credentials)
+            
+                add_aa_models(account)
+
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            en.rollback()
+            return 1
         
-    
-        TimelessExport.load_from_file(file)
         
+        code = find_login_registration_forms(20)
+        if code != 0:
+            return code
+        
+        return
 
-    except Exception as e:
-        traceback.print_exc()
-        print(e)
-        return 1
+
+def login_all_main(identity_id) -> int:
+    """Search for login forms and add login tasks for all websites
+
+    :returns: 0
+    :rtype: int
+    """
+
+    with db.db.atomic() as en:
+        try:
+
+            credentials = db.Credentials.select().where(
+                db.Credentials.identity == identity_id
+            )
+
+            n_created = 0
+
+            for credential in credentials:
+                account = db.Account.get(credentials=credential)
+
+                if (
+                    db.LoginTask.select()
+                    .where(
+                        db.LoginTask.account == account, task_type="auto", status="free"
+                    )
+                    .exists()
+                ):
+                    continue
+                
+                # check first if aa_models exist
+                
+                if not aa_LoginForm.select().where(aa_LoginForm.site == account.website.site).exists():
+                    print(f"Login form not found for {account.website.site}")
+                    continue
+
+                db.LoginTask.create(
+                    account=account,
+                    task_type="auto",
+                )
+
+                n_created += 1
+
+            print(f"Added {n_created} login tasks for identity {identity_id}")
+
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            en.rollback()
+            return 1
+
+    return 0
 
 
 if __name__ == "__main__":
@@ -269,6 +359,18 @@ if __name__ == "__main__":
     # add positional argument for the file
     import_subparser.add_argument("file", type=str, help="JSON file to import")
 
+    # Login all command
+    login_all_subparser = suparsers.add_parser("login_all", help="Login all websites")
+
+    login_all_subparser.add_argument(
+        "--identity",
+        "-i",
+        type=int,
+        required=True,
+        help="Id (int) of the Identity instance to create registration tasks",
+        action="append",
+    )
+
     # Parse arguments
 
     args = parser.parse_args()
@@ -287,5 +389,15 @@ if __name__ == "__main__":
 
         sys.exit(import_main(args.file))
 
+    elif args.command == "login_all":
+
+        for identity in args.identity:
+            exit_code = login_all_main(identity)
+            if exit_code != 0:
+                sys.exit(exit_code)
+
+        sys.exit(0)
+
     else:
-        print(args)
+        parser.print_help()
+        sys.exit(1)

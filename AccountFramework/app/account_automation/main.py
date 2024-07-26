@@ -200,10 +200,14 @@ def _manage_crawler(job: str, crawler_id: int, log_path: pathlib.Path, modules: 
                 os.remove(Config.LOG / f"job{job}crawler{crawler_id}.cache")
 
         crawler.close()
+        
+        # log exit code
+        if crawler.exception:
+            log.error("Crawler %s exited with %s", task.crawler, crawler.exception[1])
 
         # Mark task as complete
         task = aa_Task.get_by_id(task.get_id())
-        task.state = 'complete'
+        task.state = 'completed'
 
         if Config.RESTART and (Config.LOG / f"job{job}crawler{crawler_id}.cache").exists():
             task.error = 'Crawler crashed' if not task.error else 'Crawler crashed, ' + task.error
