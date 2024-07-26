@@ -8,7 +8,7 @@ import httpx
 import gzip
 import traceback
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 import db
 import tld
@@ -100,7 +100,9 @@ def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int):
             )
 
 
-def main(crux_link: str, start: int, count: int, identity: int, crawlers: int) -> int:
+def crux_main(
+    crux_link: str, start: int, count: int, identities: List[int], crawlers: int
+) -> int:
     """Starts the account automation to find login and registration forms, and prepares manual registration tasks
 
     :param crux_link: URL to CRUX dataset
@@ -141,33 +143,64 @@ def main(crux_link: str, start: int, count: int, identity: int, crawlers: int) -
 
     print("Finished searching for forms. Adding Registration Tasks now.")
 
-    # Add registration tasks for all sites where both registration and login form were discovered
-    subquery = db.RegisterTask.select(db.RegisterTask.website)
-    subquery = db.Website.select(db.Website.site).where(db.Website.id.in_(subquery))
-    sites_regform = (
-        aa_RegistrationForm.select(aa_RegistrationForm.site)
-        .distinct()
-        .where(aa_RegistrationForm.site.not_in(subquery))
-    )
-    sites_loginregform = (
-        aa_LoginForm.select(aa_LoginForm.site)
-        .distinct()
-        .where(aa_LoginForm.site.in_(sites_regform))
-    )
-
-    identity: db.Identity = db.Identity.get_by_id(identity)
-
-    # Iterate over sites with login and registration, schedule registration task
-    for site in sites_loginregform:
-        website = db.Website.get(site=site.site)
-        db.RegisterTask.create(
-            website=website, identity=identity, account=None, recording=True
+    for identity in identities:
+        # Add registration tasks for all sites where both registration and login form were discovered
+        subquery = db.RegisterTask.select(db.RegisterTask.website)
+        subquery = db.Website.select(db.Website.site).where(db.Website.id.in_(subquery))
+        sites_regform = (
+            aa_RegistrationForm.select(
+                aa_RegistrationForm.site
+            )  # pylint: disable=used-before-assignment
+            .distinct()
+            .where(aa_RegistrationForm.site.not_in(subquery))
         )
-        url = aa_Task.get(site=site.site)
-        website.landing_page = url.landing_page
-        website.save()
+        sites_loginregform = (
+            aa_LoginForm.select(
+                aa_LoginForm.site
+            )  # pylint: disable=used-before-assignment
+            .distinct()
+            .where(aa_LoginForm.site.in_(sites_regform))
+        )
+
+        identity: db.Identity = db.Identity.get_by_id(identity)
+
+        # Iterate over sites with login and registration, schedule registration task
+        for site in sites_loginregform:
+            website = db.Website.get(site=site.site)
+            db.RegisterTask.create(
+                website=website, identity=identity, account=None, recording=True
+            )
+            url = aa_Task.get(site=site.site)
+            website.landing_page = url.landing_page
+            website.save()
 
     return
+
+
+def import_main(file: str) -> int:
+    """Import sites from JSON export of the database
+
+    :param file: JSON file to import
+    :returns: 0
+    :rtype: int
+    """
+
+    file = pathlib.Path(file)
+
+    try:
+
+        if file.suffix != ".json":
+            raise ValueError(f"File {file} is not a JSON file")
+
+        if not file.exists():
+            raise FileNotFoundError(f"File {file} does not exist")
+        
+        
+
+    except Exception as e:
+        traceback.print_exc()
+        print(e)
+        return 1
 
 
 if __name__ == "__main__":
@@ -193,27 +226,63 @@ if __name__ == "__main__":
         description="Search for login and registration forms and add registration tasks if found.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
+
+    suparsers = parser.add_subparsers(dest="command")
+
+    # CRUX command to fill the dataset from CRUX
+
+    crux_subparser = suparsers.add_parser("crux", help="Prepare sites from CRUX")
+
+    crux_subparser.add_argument(
         "--count", type=int, required=True, help="How many sites to prepare"
     )
-    parser.add_argument(
+    crux_subparser.add_argument(
         "--crux_link", type=str, required=True, help="URL to CRUX dataset"
     )
-    parser.add_argument(
+    crux_subparser.add_argument(
         "--identity",
+        "-i",
         type=int,
         required=True,
         help="Id (int) of the Identity instance to create registration tasks",
+        action="append",
     )
-    parser.add_argument(
+    crux_subparser.add_argument(
         "--start",
         type=int,
         default=1,
         help="Starting site (identified by line number in the CSV file)",
     )
-    parser.add_argument(
+    crux_subparser.add_argument(
         "--crawlers", type=int, default=20, help="How many crawlers to start"
     )
+
+    # Import Sites from JSON export of the database
+
+    import_subparser = suparsers.add_parser(
+        "import", help="Import sites from JSON export"
+    )
+
+    # add positional argument for the file
+    import_subparser.add_argument("file", type=str, help="JSON file to import")
+
+    # Parse arguments
+
     args = parser.parse_args()
 
-    sys.exit(main(args.crux_link, args.start, args.count, args.identity, args.crawlers))
+    # switch based on the subparser
+
+    if args.command == "crux":
+
+        sys.exit(
+            crux_main(
+                args.crux_link, args.start, args.count, args.identity, args.crawlers
+            )
+        )
+
+    elif args.command == "import":
+
+        sys.exit(import_main(args.file))
+
+    else:
+        print(args)

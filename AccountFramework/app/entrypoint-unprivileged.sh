@@ -21,9 +21,10 @@ if [[ -z "$WORKER" ]]; then
         # Unlock BW API
         curl -X POST http://localhost:9999/unlock -d "{\"password\": \"${BW_PASSWORD}\"}" -H 'Content-Type: application/json'
     fi
-    # Setup db and rerun documentation creation
+    # Setup db, rerun documentation creation, and generate export schemas
     python3 db.py
     python3 db_documenter.py
+    python3 db_exports.py generate-schemas
     # Setup the identity
     python3 create_identity.py
     # Start the API

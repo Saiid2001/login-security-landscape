@@ -1,0 +1,212 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Sites and Accounts",
+    "type": "object",
+    "properties": {
+        "websites": {
+            "type": "array",
+            "items": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "websites (Website)",
+                "description": "     represents a website we can create accounts for.     ",
+                "type": "object",
+                "properties": {
+                    "origin": {
+                        "type": "string",
+                        "description": "Origin"
+                    },
+                    "site": {
+                        "type": "string",
+                        "description": "Site (etld+1)"
+                    },
+                    "landing_page": {
+                        "type": "string",
+                        "description": "Full URL of the origin landing page"
+                    },
+                    "t_rank": {
+                        "type": "number",
+                        "description": "Website rank according to Tranco"
+                    },
+                    "c_bucket": {
+                        "type": "number",
+                        "description": "Website bucket according to CrUX"
+                    },
+                    "tranco_date": {
+                        "type": "string",
+                        "description": "Tranco date"
+                    },
+                    "crux_date": {
+                        "type": "string",
+                        "description": "CrUX date"
+                    }
+                },
+                "required": [
+                    "origin",
+                    "site",
+                    "landing_page",
+                    "t_rank",
+                    "c_bucket"
+                ]
+            }
+        },
+        "accounts": {
+            "type": "array",
+            "items": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "accounts (Account)",
+                "description": "     Represents a single registered account for a website.     Each account has exactly one credentials and exactly one session and belongs to exactly one website.     ",
+                "type": "object",
+                "properties": {
+                    "registration_note": {
+                        "type": "string",
+                        "description": "Note for last registration attempt",
+                        "default": ""
+                    },
+                    "login_note": {
+                        "type": "string",
+                        "description": "Note of last login attempt",
+                        "default": ""
+                    },
+                    "validation_note": {
+                        "type": "string",
+                        "description": "Note of last validation attempt",
+                        "default": ""
+                    }
+                },
+                "required": [
+                    "registration_note",
+                    "login_note",
+                    "validation_note"
+                ]
+            }
+        },
+        "credentials": {
+            "type": "array",
+            "items": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "credentials (Credentials)",
+                "description": "     represents credentials required to login and additional User information     ",
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "Username for login",
+                        "default": ""
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Email for login",
+                        "default": ""
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "Password for login",
+                        "default": ""
+                    }
+                },
+                "required": [
+                    "username",
+                    "email",
+                    "password"
+                ]
+            }
+        },
+        "identities": {
+            "type": "array",
+            "items": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "identities (Identity)",
+                "description": "     represents a template of personal information.     Idendities can be \"instanciated\" into Credentials.     ",
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "Preferred username"
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Preferred email address"
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "Preferred password"
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "description": "First name"
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "description": "Last name"
+                    },
+                    "gender": {
+                        "type": "string",
+                        "description": "Gender"
+                    },
+                    "country": {
+                        "type": "string",
+                        "description": "Country"
+                    },
+                    "zip_code": {
+                        "type": "string",
+                        "description": "Zip code"
+                    },
+                    "city": {
+                        "type": "string",
+                        "description": "City"
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "Address"
+                    },
+                    "birthday": {
+                        "type": "string",
+                        "description": "Birthday"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number"
+                    },
+                    "storage_json": {
+                        "type": "string",
+                        "description": "Path to the storage_json of the email account of this identity",
+                        "default": ""
+                    },
+                    "creation_time": {
+                        "type": "string",
+                        "description": "Time this entry was created",
+                        "default": "NOW()"
+                    },
+                    "update_time": {
+                        "type": "string",
+                        "description": "Time this entry was last updated",
+                        "default": "NOW()"
+                    }
+                },
+                "required": [
+                    "username",
+                    "email",
+                    "password",
+                    "first_name",
+                    "last_name",
+                    "gender",
+                    "country",
+                    "zip_code",
+                    "city",
+                    "address",
+                    "birthday",
+                    "phone",
+                    "storage_json",
+                    "creation_time",
+                    "update_time"
+                ]
+            }
+        }
+    },
+    "required": [
+        "websites",
+        "accounts",
+        "credentials",
+        "identities"
+    ]
+}

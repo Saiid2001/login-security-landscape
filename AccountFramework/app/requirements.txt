@@ -14,3 +14,4 @@ pandas==2.0.2
 httpx==0.24.1
 peewee-db-evolve==3.7.6
 baf==1.0
+jsonschema==4.23.0
