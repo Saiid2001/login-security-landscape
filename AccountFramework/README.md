@@ -90,13 +90,27 @@ We recommend running it in the beginning to get an overview of the framework. Ho
 - Within the non-VNC terminal run `python3 api_demo.py` to test the client functionality of the API. If the output is `No session available`, the automated worker is probably still logging in or validating the demo sessions. Please wait a bit and try again.
 - Run `docker compose logs --tail 50 accf-auto` to see the logging output of the API and similar
 
-### Preparation (Search for Registration and Login Forms)
+### Preparation
 
-The account framework can search for login and registration forms on websites from the CrUX list and automatically create registration tasks for a given identity for sites where both a login and a registration form was discovered.
+Loading sites into the Account Framework database and  and automatically create registration tasks for a given identity for sites where both a login and a registration form was discovered.
 - Open a shell within the automated worker: `docker compose exec -u demouser -it accf-auto  /bin/bash`
 - Run `python3 prepare.py --help` to check the usage and settings of the preparation script.
-- For example, run the following to start automatic crawling for registration/login URLs for the first 10 origins of CrUX December 2022: `DISPLAY=:99 python3 prepare.py --count 10 --crux_link https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/202212.csv.gz --identity 1`
+
+Getting websites into the Account Framework can be done in two main ways:
+
+#### (1) Search for Registration and Login Forms
+
+Run the following to start automatic crawling for registration/login URLs for the first 10 origins of CrUX December 2022: `DISPLAY=:99 python3 prepare.py crux --count 10 --crux_link https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/202212.csv.gz --identity 1`
 - Note that CrUX contains origins and only the first one is used per site/etld+1
+
+#### (2) Import data from other studies using the account framework
+
+This option can help you import accounts, credentials and sites that worked for other studies using the account framework.
+
+Run the following command
+`python3 prepare.py import data.json` where `data.json` is a json file with the schema can be found in [app/schemas](app/schemas/timeless.json).
+
+To export the data from the account framework, run the following command `python3 db_export.py data.json`.
 
 ### Manual Mode
 

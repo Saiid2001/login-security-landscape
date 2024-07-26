@@ -11,6 +11,9 @@
                 "description": "     represents a website we can create accounts for.     ",
                 "type": "object",
                 "properties": {
+                    "id": {
+                        "type": "number"
+                    },
                     "origin": {
                         "type": "string",
                         "description": "Origin"
@@ -32,15 +35,22 @@
                         "description": "Website bucket according to CrUX"
                     },
                     "tranco_date": {
-                        "type": "string",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "description": "Tranco date"
                     },
                     "crux_date": {
-                        "type": "string",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "description": "CrUX date"
                     }
                 },
                 "required": [
+                    "id",
                     "origin",
                     "site",
                     "landing_page",
@@ -57,6 +67,38 @@
                 "description": "     Represents a single registered account for a website.     Each account has exactly one credentials and exactly one session and belongs to exactly one website.     ",
                 "type": "object",
                 "properties": {
+                    "website": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "Website the account belongs to"
+                    },
+                    "credentials": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "Login credentials (and possibly additional information about registered user)"
+                    },
+                    "account_status": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "Account status"
+                    },
+                    "registration_result": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "Registration information"
+                    },
                     "registration_note": {
                         "type": "string",
                         "description": "Note for last registration attempt",
@@ -74,6 +116,8 @@
                     }
                 },
                 "required": [
+                    "website",
+                    "credentials",
                     "registration_note",
                     "login_note",
                     "validation_note"
@@ -88,6 +132,9 @@
                 "description": "     represents credentials required to login and additional User information     ",
                 "type": "object",
                 "properties": {
+                    "id": {
+                        "type": "number"
+                    },
                     "username": {
                         "type": "string",
                         "description": "Username for login",
@@ -102,12 +149,30 @@
                         "type": "string",
                         "description": "Password for login",
                         "default": ""
+                    },
+                    "identity": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "\"Blueprint\" for personal information"
+                    },
+                    "website": {
+                        "type": [
+                            "string",
+                            "null",
+                            "number"
+                        ],
+                        "description": "Website the credentials belong to"
                     }
                 },
                 "required": [
+                    "id",
                     "username",
                     "email",
-                    "password"
+                    "password",
+                    "identity"
                 ]
             }
         },
@@ -119,6 +184,9 @@
                 "description": "     represents a template of personal information.     Idendities can be \"instanciated\" into Credentials.     ",
                 "type": "object",
                 "properties": {
+                    "id": {
+                        "type": "number"
+                    },
                     "username": {
                         "type": "string",
                         "description": "Preferred username"
@@ -171,19 +239,10 @@
                         "type": "string",
                         "description": "Path to the storage_json of the email account of this identity",
                         "default": ""
-                    },
-                    "creation_time": {
-                        "type": "string",
-                        "description": "Time this entry was created",
-                        "default": "NOW()"
-                    },
-                    "update_time": {
-                        "type": "string",
-                        "description": "Time this entry was last updated",
-                        "default": "NOW()"
                     }
                 },
                 "required": [
+                    "id",
                     "username",
                     "email",
                     "password",
@@ -196,9 +255,7 @@
                     "address",
                     "birthday",
                     "phone",
-                    "storage_json",
-                    "creation_time",
-                    "update_time"
+                    "storage_json"
                 ]
             }
         }

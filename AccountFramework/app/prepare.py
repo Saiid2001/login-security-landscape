@@ -4,6 +4,7 @@ import pathlib
 import subprocess
 import sys
 import os
+from db_export import TimelessExport
 import httpx
 import gzip
 import traceback
@@ -195,6 +196,8 @@ def import_main(file: str) -> int:
         if not file.exists():
             raise FileNotFoundError(f"File {file} does not exist")
         
+    
+        TimelessExport.load_from_file(file)
         
 
     except Exception as e:

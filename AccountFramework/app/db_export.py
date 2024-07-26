@@ -34,8 +34,11 @@ def generate_model_schema(table: db.Model, columns: Optional[List[str]] = None):
     cols = dict()
 
     for key, value in table._meta.columns.items():
-        if key != "id" and key in columns:
+        if key in columns:
             cols[key] = value
+
+        if key[-3:] == "_id" and key[:-3] in columns:
+            cols[key[:-3]] = value
 
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -54,6 +57,11 @@ def generate_model_schema(table: db.Model, columns: Optional[List[str]] = None):
                 "description": value.help_text.replace("\n", " "),
             }
 
+        elif typ == "AutoField":
+            schema["properties"][key] = {
+                "type": "number",
+            }
+
         else:
             schema["properties"][key] = {
                 "type": TYPE_MAP[typ],
@@ -67,6 +75,14 @@ def generate_model_schema(table: db.Model, columns: Optional[List[str]] = None):
 
         if value.null is False:
             schema["required"].append(key)
+        else:
+
+            typ = schema["properties"][key]["type"]
+            if isinstance(typ, list):
+                if "null" not in typ:
+                    schema["properties"][key]["type"].append("null")
+            else:
+                schema["properties"][key]["type"] = [typ, "null"]
 
     return schema
 
@@ -99,16 +115,47 @@ def combine_schemas(title, schemas: Dict[str, dict]):
     return combined
 
 
+def to_dicts(query, columns: Optional[List[str]] = None):
+
+    dicts = query.dicts()
+
+    # turn datetime into iso string recurisvely
+    def convert_datetime(obj):
+        _new_obj = dict()
+        for key, value in obj.items():
+            if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+                _new_obj[key] = value.isoformat()
+            elif isinstance(value, dict):
+                _new_obj[key] = convert_datetime(value)
+            else:
+                _new_obj[key] = value
+        return _new_obj
+
+    dicts = [convert_datetime(obj) for obj in dicts]
+
+    if columns is not None:
+        return [
+            {
+                key: value
+                for key, value in obj_dict.items()
+                if key in columns or (key[:-3] in columns and key[-3:] == "_id")
+            }
+            for obj_dict in dicts
+        ]
+
+    return dicts
+
+
 EXPORT_TYPES: Dict[str, "Export"] = dict()
 
 
 class Export(ABC):
     id: str
 
-    @staticmethod
-    @abstractmethod
-    def validate(data: dict) -> bool:
-        raise NotImplementedError()
+    @classmethod
+    def validate(cls, data: dict):
+        schema = EXPORT_TYPES[cls.id].generate_schema()
+        jsonschema.validate(data, schema)
 
     @staticmethod
     @abstractmethod
@@ -117,8 +164,29 @@ class Export(ABC):
 
     @staticmethod
     @abstractmethod
-    def load(file: str):
+    def load(data: dict):
         raise NotImplementedError()
+
+    @classmethod
+    def load_from_file(cls, file: str):
+
+        file = pathlib.Path(file)
+        if not file.exists():
+            raise FileNotFoundError(f"File {file} does not exist")
+
+        if not file.is_file() or not file.suffix == ".json":
+            raise ValueError(f"File {file} is not a json file")
+
+        with open(file, "r") as f:
+            data = json.load(f)
+            cls.validate(data)
+            cls.load(data)
+
+    @classmethod
+    def load_from_json(cls, json_data: str):
+        data = json.loads(json_data)
+        cls.validate(data)
+        cls.load(data)
 
     @staticmethod
     @abstractmethod
@@ -137,68 +205,170 @@ SCHEMAS_DIR = __dir__ / "schemas"
 SCHEMAS_DIR.mkdir(exist_ok=True)
 
 
-class SitesAndAccountsExport(Export):
-    id = "sites_and_accounts"
+class TimelessExport(Export):
+    id = "timeless"
 
-    @staticmethod
-    def validate(data: dict):
-        pass
+    # columns to include
+    websites_columns = [
+        "id",
+        "origin",
+        "site",
+        "landing_page",
+        "t_rank",
+        "c_bucket",
+        "tranco_date",
+        "crux_date",
+    ]
+
+    accounts_columns = [
+        "website",
+        "credentials",
+        "registration_result",
+        "account_status",
+        "registration_note",
+        "login_note",
+        "validation_note",
+    ]
+
+    credentials_columns = [
+        "id",
+        "username",
+        "password",
+        "email",
+        "identity",
+        "website",
+    ]
+
+    identities_columns = [
+        "id",
+        "username",
+        "email",
+        "password",
+        "first_name",
+        "last_name",
+        "gender",
+        "country",
+        "zip_code",
+        "city",
+        "address",
+        "birthday",
+        "phone",
+        "storage_json",
+    ]
 
     @staticmethod
     def export(file: str):
-        pass
+
+        db.initialize_db()
+
+        sites = db.Website.select()
+        accounts = db.Account.select()
+        credentials = db.Credentials.select()
+        identities = db.Identity.select()
+
+        data = {
+            "websites": to_dicts(sites, TimelessExport.websites_columns),
+            "accounts": to_dicts(accounts, TimelessExport.accounts_columns),
+            "credentials": to_dicts(credentials, TimelessExport.credentials_columns),
+            "identities": to_dicts(identities, TimelessExport.identities_columns),
+        }
+
+        jsonschema.validate(data, TimelessExport.generate_schema())
+
+        with open(file, "w") as f:
+            json.dump(data, f, indent=4)
 
     @staticmethod
-    def load(file: str):
-        pass
+    def load(data: dict):
+    
+
+        jsonschema.validate(data, TimelessExport.generate_schema())
+
+        # First load the identities and store the mapping of id to identity
+        # id_map = {id_in_file: id_in_db}
+        identity_id_map = {}
+
+        with db.db.transaction() as transaction:
+            
+            try:
+                for identity_obj in data["identities"]:
+
+                    # error if an identity with the same email already exists
+                    # if (
+                    #     db.Identity.select()
+                    #     .where(db.Identity.email == identity_obj["email"])
+                    #     .exists()
+                    # ):
+                    #     raise ValueError(
+                    #         f"Identity with email {identity_obj['email']} already exists"
+                    #     )
+                    
+
+                    _id = identity_obj.pop("id")
+                    identity, _ = db.Identity.get_or_create(**identity_obj)
+                    identity_id_map[_id] = identity.id
+
+                # load websites or get them
+                website_id_map = {}
+
+                for website_obj in data["websites"]:
+                    _id = website_obj.pop("id")
+
+                    if (
+                        db.Website.select()
+                        .where(db.Website.site == website_obj["site"])
+                        .exists()
+                    ):
+                        website = db.Website.get(site=website_obj["site"])
+                    else:
+
+                        website = db.Website.create(**website_obj)
+                    website_id_map[_id] = website.id
+
+                # load credentials after mapping ids for them
+                credentials_id_map = {}
+
+                for credential_obj in data["credentials"]:
+                    _id = credential_obj.pop("id")
+                    credential_obj["identity"] = identity_id_map[credential_obj["identity"]]
+                    credential_obj["website"] = website_id_map[credential_obj["website"]]
+                    credentials = db.Credentials.create(**credential_obj)
+                    credentials_id_map[_id] = credentials.id
+
+                # load accounts
+                for account_obj in data["accounts"]:
+                    account_obj["website"] = website_id_map[account_obj["website"]]
+                    account_obj["credentials"] = credentials_id_map[account_obj["credentials"]]
+                    db.Account.create(**account_obj)
+                    
+            except Exception as e:
+                transaction.rollback()
+                raise e
 
     @staticmethod
     def generate_schema():
 
-        sites_schema = generate_model_schema(
-            db.Website,
-            columns=[
-                "origin",
-                "site",
-                "landing_page",
-                "t_rank",
-                "c_bucket",
-                "tranco_date",
-                "crux_date",
-            ],
+        websites_schema = generate_model_schema(
+            db.Website, columns=TimelessExport.websites_columns
         )
+
         accounts_schema = generate_model_schema(
             db.Account,
-            columns=[
-                "website",
-                "credential",
-                "registration_result",
-                "account_status",
-                "registration_note",
-                "login_note",
-                "validation_note",
-            ],
+            columns=TimelessExport.accounts_columns,
         )
 
         credentials_schema = generate_model_schema(
-            db.Credentials,
-            columns=[
-                "username",
-                "password",
-                "email",
-                "identity",
-                "website",
-            ],
+            db.Credentials, columns=TimelessExport.credentials_columns
         )
 
         identities_schema = generate_model_schema(
-            db.Identity,
+            db.Identity, columns=TimelessExport.identities_columns
         )
 
         schema = combine_schemas(
             "Sites and Accounts",
             {
-                "websites": sites_schema,
+                "websites": websites_schema,
                 "accounts": accounts_schema,
                 "credentials": credentials_schema,
                 "identities": identities_schema,
@@ -234,7 +404,7 @@ if __name__ == "__main__":
         "--type",
         help="Type of export",
         choices=EXPORT_TYPES.keys(),
-        default="sites_and_accounts",
+        default="timeless",
     )
 
     args = parser.parse_args()
