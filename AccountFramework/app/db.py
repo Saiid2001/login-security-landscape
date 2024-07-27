@@ -19,6 +19,7 @@ from peewee import (
     Model,
     PostgresqlDatabase,
     TextField,
+    fn
 )
 
 # setup database connection wrapper thingy

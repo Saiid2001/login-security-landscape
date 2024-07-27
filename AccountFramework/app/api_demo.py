@@ -28,6 +28,15 @@ def get_specific_session(socket, experiment, site):
         return response["session"]
     raise Exception(response["error"])
 
+def get_sessions(socket, experiment, count):
+    """Get multiple sessions for an experiment."""
+    request = {"type": "get_sessions", "experiment": experiment, "k": count}
+    socket.send_string(json.dumps(request))
+    response = json.loads(socket.recv_string())
+    if response["success"]:
+        return response["site"], response["sessions"]
+    raise Exception(response["error"])
+
 def unlock_session(socket, session, experiment):
     """Unlock a session again."""
     request = {"type": "unlock_session", "experiment": experiment, "session_id": session["id"]}
@@ -47,7 +56,7 @@ if __name__ == "__main__":
     try:
         session = get_session(s, exp)
         print(f"Received a session for {exp}: {session}")
-        _ = bullet.YesNo("Press enter to unlock the session (currently it is locked in the db).").launch()
+        # _ = bullet.YesNo("Press enter to unlock the session (currently it is locked in the db).").launch()
         print(f"Unlocked session. {unlock_session(s, session, exp)}")
     except Exception:
         print("Either no unlocked session is available at all at the moment or the experiment already used them.")
@@ -63,3 +72,14 @@ if __name__ == "__main__":
         print("No session for demo.dashpress.io is currently available.")
         traceback.print_exc()
     
+    # Try getting multiple sessions for the same experiment
+    try:
+        site, sessions = get_sessions(s, exp, 1)
+        print(f"Received session for {site}: {[session['session'] for session in sessions]}")
+        
+        for session in sessions:
+            print(f"Unlocked session. {unlock_session(s, session['session'], exp)}")
+        
+    except Exception:
+        print("No session is currently available.")
+        traceback.print_exc()

@@ -266,7 +266,7 @@ def login_all_main(identity_id) -> int:
                 if (
                     db.LoginTask.select()
                     .where(
-                        db.LoginTask.account == account, task_type="auto", status="free"
+                        db.LoginTask.account == account, db.LoginTask.task_type=="auto", db.LoginTask.status=="free"
                     )
                     .exists()
                 ):

@@ -1,5 +1,7 @@
+from collections import defaultdict
 import os
 import sys
+import traceback
 from typing import Optional
 import db
 import json
@@ -239,6 +241,161 @@ def handle_get_session(experiment: str, site=None):
         return
 
 
+def handle_get_sessions(experiment: str, site=None, k=2):
+    """Handle multiple session requests. An experiment name is required. Optional a site can be specified to request a session for that specific site."""
+
+    global SESSION_FILE_PATH
+    print(f"Get sessions for experiment: {experiment}")
+
+    # Get all currently available sessions (active + verified + unlocked) such that there are at least k sessions from different accounts per website
+
+    available_websites = (
+        db.Account.select(
+            db.fn.Count(db.Account.id.distinct()).alias("account_count"),
+            db.Account.website,
+        )
+        .join(db.Session, on=(db.Account.session == db.Session.id))
+        .join(db.SessionStatus, on=(db.Session.session_status == db.SessionStatus.id))
+        .where(
+            db.SessionStatus.active == True,
+            db.Session.locked == False,
+            db.Session.verified == True,
+        )
+        .group_by(db.Account.website)
+        .having(db.fn.Count(db.Account.id.distinct()) >= k)
+    )
+
+    #     # query result
+    #     # | session_id | account_id | website_id |
+    #     # |------------|------------|------------|
+    #     # | 1          | 1          | 1          |
+    #     # | 2          | 2          | 1          |
+    #     # | 3          | 3          | 2          |
+    #     # | 4          | 4          | 2          |
+
+    query = (
+        db.Account.select(
+            db.Account.id,
+            db.Account.session,
+            db.Account.website,
+        )
+        .join(
+            available_websites,
+            on=(db.Account.website == available_websites.c.website_id),
+        )
+        .order_by(available_websites.c.website_id)
+    )
+
+    sessions = []
+    sessions_per_site = defaultdict(list)
+
+    for row in query:
+        sessions_per_site[row.website.site].append(row.session)
+        sessions.append(row.session)
+
+    # Expire old sessions (schedule new validation tasks)
+    sessions: list[db.Session] = expire_old_sessions(sessions)
+
+    # Automatically unlock sessions that were not unlocked in time
+    # Schedule new valdidate tasks for these sessions!
+    unlock_old_sessions()
+
+    # check if some sites need to be removed again
+    for site, site_sessions in list(sessions_per_site.items()):
+        _remaining_sessions = list(set(site_sessions) & set(sessions))
+
+        if len(_remaining_sessions) < k:
+            del sessions_per_site[site]
+
+        # keep only k sessions per site
+        sessions_per_site[site] = _remaining_sessions[:k]
+        
+    # If a specific site is requested
+    # Return a session for the requested site (regardless of whether it was used already by the experiment)
+    if site:
+        print(f"{site} requested by {experiment}")
+        # Iterate over all available sessions; if one fits use it
+
+        sessions_per_site = (
+            {site: sessions_per_site[site]} if site in sessions_per_site else {}
+        )
+
+    # Return any session that was not already given to the site
+    else:
+        # Get websites already given to this experiment (In the future, experiments could have several accounts for the same website and we need to adapt the logic)
+        sites_used = [
+            w.website.site
+            for w in db.ExperimentWebsite.select().where(
+                db.ExperimentWebsite.experiment == experiment
+            )
+        ]
+
+        for site, site_sessions in list(sessions_per_site.items()):
+            if site in sites_used:
+                del sessions_per_site[site]
+
+    # Use the first availabe session, lock it and return it to the experiment
+    if len(sessions_per_site):
+        # session = sessions[0]
+        site, site_sessions = list(sessions_per_site.items())[0]
+
+        session_responses = {"site": site, "sessions": []}
+
+        for session in site_sessions:
+            # Lock session and assign experiment to it!
+            session.locked = True
+            session.unlock_time = datetime.datetime.now() + datetime.timedelta(
+                hours=int(os.getenv("TIMEOUT_EXP_SESSION", "24"))
+            )
+            session.experiment = experiment
+            session.save()
+
+            # Remember the website and do not hand it out again to the same experiment (if no specific site is requested)
+            if session.account and site is None:
+                db.ExperimentWebsite.create(
+                    website=session.account.website,
+                    experiment=experiment,
+                    session=session,
+                )
+            elif site is None:
+                print(f"[WARN] account for session {session.id} is None")
+
+            loginform: Optional[aa_LoginForm] = aa_LoginForm.get_or_none(
+                site=session.account.website.site, success=True
+            )
+            loginform = loginform or aa_LoginForm.get_or_none(
+                site=session.account.website.site
+            )
+
+            # Send the session to the client
+            if loginform is None:
+                session_responses["sessions"].append(
+                    {
+                        "session": model_to_dict(session),
+                        "session_data": json.loads(
+                            open(f"{SESSION_FILE_PATH}{session.name}.json").read()
+                        ),
+                    }
+                )
+            else:
+                session_responses["sessions"].append(
+                    {
+                        "session": model_to_dict(session),
+                        "session_data": json.loads(
+                            open(f"{SESSION_FILE_PATH}{session.name}.json").read()
+                        ),
+                        "loginform": model_to_dict(loginform),
+                    }
+                )
+
+        send_success(session_responses)
+
+    # If there is no sessions left, we need to send an error
+    else:
+        send_error("no sessions available")
+        return
+
+
 if __name__ == "__main__":
     """Main loop. Wait for API requests and serve sessions if requested and available."""
     sys.path = [
@@ -266,6 +423,10 @@ if __name__ == "__main__":
                     handle_get_session(request["experiment"])
                 elif request["type"] == "get_specific_session":
                     handle_get_session(request["experiment"], request["site"])
+                elif request["type"] == "get_sessions":
+                    handle_get_sessions(request["experiment"], k=request.get("k", 2))
+                elif request["type"] == "get_specific_sessions":
+                    handle_get_sessions(request["experiment"], request["site"], k=request.get("k", 2))
                 elif request["type"] == "unlock_session":
                     handle_unlock_session(request["experiment"], request["session_id"])
                 else:
@@ -273,4 +434,5 @@ if __name__ == "__main__":
 
             except Exception as e:
                 # Something went wrong. Just send a generic error message.
+                print(traceback.format_exc())
                 send_error(f"invalid request {e}")
