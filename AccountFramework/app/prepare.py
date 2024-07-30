@@ -295,6 +295,50 @@ def login_all_main(identity_id) -> int:
 
     return 0
 
+def register_all_main(identity_id, ref_identity_id) -> int:
+    """Search for registration forms and add registration tasks for all websites
+    """
+    
+    with db.db.atomic() as en:
+        try:
+
+           # get all successful login tasks from ref_identity_id
+           accounts = (db.Account
+                          .select(db.Account.website.distinct())
+                          .where(db.Credentials.identity == ref_identity_id, db.LoginTask.login_result_id == 1)
+                          .join(db.LoginTask, on=(db.LoginTask.account == db.Account.id))
+                            .join(db.Credentials, on=(db.Account.credentials == db.Credentials.id))
+                            
+                          
+           )
+           
+           for account in accounts:
+               
+               website= account.website
+               
+               if (
+                    db.RegisterTask.select()
+                    .where(
+                        db.RegisterTask.website == website, db.RegisterTask.identity == identity_id
+                    )
+                    .exists()
+                ):
+                    continue
+               
+               db.RegisterTask.create(
+                    website=website, identity=identity_id, account=None, recording=True
+                )
+               
+               add_aa_models(db.Account.get(website=website))
+
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            en.rollback()
+            return 1
+
+    return 0
+
 
 if __name__ == "__main__":
     # Prepare path to the account automation and import relevant modules
@@ -371,6 +415,26 @@ if __name__ == "__main__":
         action="append",
     )
 
+    # Register all command
+    register_all_subparser = suparsers.add_parser("register_all", help="Register all websites")
+    
+    register_all_subparser.add_argument(
+        "--identity",
+        "-i",
+        type=int,
+        required=True,
+        help="Id (int) of the Identity instance to create registration tasks",
+        action="append",
+    )
+    
+    register_all_subparser.add_argument(
+        "--ref_identity",
+        "-r",
+        type=int,
+        required=True,
+        help="Id (int) of the Identity instance as reference for login tasks",
+    )
+
     # Parse arguments
 
     args = parser.parse_args()
@@ -396,6 +460,15 @@ if __name__ == "__main__":
             if exit_code != 0:
                 sys.exit(exit_code)
 
+        sys.exit(0)
+        
+    elif args.command == "register_all":
+        
+        for identity in args.identity:
+            exit_code = register_all_main(identity, args.ref_identity)
+            if exit_code != 0:
+                sys.exit(exit_code)
+                
         sys.exit(0)
 
     else:
