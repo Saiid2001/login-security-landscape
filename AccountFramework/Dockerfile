@@ -23,4 +23,4 @@ RUN useradd -u 1001 -r -g $APP_USER -d /home/$APP_USER -s /sbin/nologin -c "Dock
 WORKDIR /app
 
 # Install bitwarden CLI
-RUN npm install -g @bitwarden/cli
+RUN npm install -g @bitwarden/cli@2024.6.0

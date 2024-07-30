@@ -15,16 +15,20 @@ source $IDENTITY_FILE
 # Start Account Framework API + Automated Workers
 if [[ -z "$WORKER" ]]; then
     # Bitwarden: Login, start HTTP API
-    if [[ "$use_bitwarden" == true ]]; then
+    if [[ "$use_bitwarden" == "True" ]]; then
         bw login --apikey
         bw serve --port 9999 --hostname 0.0.0.0 &
+
+        # Wait for BW API to start
+        sleep 10
+
         # Unlock BW API
-        curl -X POST http://localhost:9999/unlock -d "{\"password\": \"${BW_PASSWORD}\"}" -H 'Content-Type: application/json'
+        curl -X POST http://0.0.0.0:9999/unlock -d "{\"password\": \"${BW_PASSWORD}\"}" -H 'Content-Type: application/json'
     fi
     # Setup db, rerun documentation creation, and generate export schemas
     python3 db.py
     python3 db_documenter.py
-    python3 db_exports.py generate-schemas
+    python3 db_export.py generate-schemas
     # Setup the identity
     python3 create_identity.py
     # Start the API

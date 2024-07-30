@@ -568,10 +568,10 @@ def main(mode: str) -> int:
             "--browser",
             "firefox",
             "--load-storage",
-            "auth/0-gmail.json",
+            "auth/0-proton.json",
             "--save-storage",
-            "auth/0-gmail.json",
-            "https://mail.google.com/mail/u/2/#inbox",
+            "auth/0-proton.json",
+            "https://mail.proton.me/inbox",
         ],
         start_new_session=True,
     )
