@@ -279,10 +279,17 @@ def handle_get_sessions(experiment: str, site=None, k=2):
             db.Account.session,
             db.Account.website,
         )
+        .where(
+            db.SessionStatus.active == True,
+            db.Session.locked == False,
+            db.Session.verified == True,
+        )
         .join(
             available_websites,
             on=(db.Account.website == available_websites.c.website_id),
         )
+        .join(db.Session, on=(db.Account.session == db.Session.id))
+        .join(db.SessionStatus, on=(db.Session.session_status == db.SessionStatus.id))
         .order_by(available_websites.c.website_id)
     )
 

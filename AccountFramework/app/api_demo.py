@@ -74,7 +74,7 @@ if __name__ == "__main__":
     
     # Try getting multiple sessions for the same experiment
     try:
-        site, sessions = get_sessions(s, exp, 1)
+        site, sessions = get_sessions(s, exp, 2)
         print(f"Received session for {site}: {[session['session'] for session in sessions]}")
         
         for session in sessions:

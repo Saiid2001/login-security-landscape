@@ -44,7 +44,7 @@ def setup_gmail():
     pw = os.getenv("gmail_pw")
     _ = bullet.YesNo(f"Press enter to setup the GMAIL profile.\nMail={mail}, PW={pw}").launch()
     print("Close the browser with the X button in the browser.")                     
-    subprocess.call(["playwright", "open", "https://mail.google.com", "--browser=firefox", "--save-storage=auth/0-gmail.json"])
+    subprocess.call(["playwright", "open", "https://mail.proton.me/", "--browser=firefox", "--save-storage=auth/0-proton.json"])
 
 with sync_playwright() as playwright:
     if os.getenv("use_bitwarden") == "True":
