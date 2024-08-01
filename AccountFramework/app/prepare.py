@@ -218,9 +218,7 @@ def import_main(file: str) -> int:
             if not file.exists():
                 raise FileNotFoundError(f"File {file} does not exist")
 
-            # credentials_ids = TimelessExport.load_from_file(file)
-            credentials_ids = db.Credentials.select(db.Credentials.id)
-
+            credentials_ids = TimelessExport.load_from_file(file)
             # for each credentials add a login task
 
             for credentials_id in credentials_ids:
