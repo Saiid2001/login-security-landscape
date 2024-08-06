@@ -226,7 +226,7 @@ const unlockSessions = async () => {
             })
             // If there are no subjects for that session (=session is done), unlock it
             if (subjectCount === 0) {
-                const zmqSession = !listenerConfiguration.testMode ? new ZMQWrapper() : new ZMQWrapperTest();
+                const zmqSession = !listenerConfiguration.testMode?.enabled? new ZMQWrapper() : new ZMQWrapperTest();
                 await zmqSession.init()
                 await zmqSession.unlockSession(element.id)
             }
