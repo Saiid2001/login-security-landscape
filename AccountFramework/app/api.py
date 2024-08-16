@@ -308,14 +308,14 @@ def handle_get_sessions(experiment: str, site=None, k=2):
     unlock_old_sessions()
 
     # check if some sites need to be removed again
-    for site, site_sessions in list(sessions_per_site.items()):
+    for _site, site_sessions in list(sessions_per_site.items()):
         _remaining_sessions = list(set(site_sessions) & set(sessions))
 
         if len(_remaining_sessions) < k:
-            del sessions_per_site[site]
+            del sessions_per_site[_site]
 
         # keep only k sessions per site
-        sessions_per_site[site] = _remaining_sessions[:k]
+        sessions_per_site[_site] = _remaining_sessions[:k]
         
     # If a specific site is requested
     # Return a session for the requested site (regardless of whether it was used already by the experiment)
@@ -337,16 +337,16 @@ def handle_get_sessions(experiment: str, site=None, k=2):
             )
         ]
 
-        for site, site_sessions in list(sessions_per_site.items()):
-            if site in sites_used:
-                del sessions_per_site[site]
+        for _site, site_sessions in list(sessions_per_site.items()):
+            if _site in sites_used:
+                del sessions_per_site[_site]
 
     # Use the first availabe session, lock it and return it to the experiment
     if len(sessions_per_site):
         # session = sessions[0]
-        site, site_sessions = list(sessions_per_site.items())[0]
+        _site, site_sessions = list(sessions_per_site.items())[0]
 
-        session_responses = {"site": site, "sessions": []}
+        session_responses = {"site": _site, "sessions": []}
 
         for session in site_sessions:
             # Lock session and assign experiment to it!
@@ -359,13 +359,25 @@ def handle_get_sessions(experiment: str, site=None, k=2):
 
             # Remember the website and do not hand it out again to the same experiment (if no specific site is requested)
             if session.account and site is None:
-                db.ExperimentWebsite.create(
-                    website=session.account.website,
-                    experiment=experiment,
-                    session=session,
-                )
+                
+                if (db.ExperimentWebsite.select().where(
+                    db.ExperimentWebsite.experiment == experiment,
+                    db.ExperimentWebsite.website == session.account.website)).count() == 0:
+                
+                    _, created = db.ExperimentWebsite.get_or_create(
+                        website=session.account.website,
+                        experiment=experiment,
+                        session=session,
+                    )
+                    
+                    if created:
+                        print(f"[INFO] experiment website set for session {session.id}: {site}")
+                        
+                else:
+                    print(f"[INFO] experiment website already set for session {session.id}: {site}")
             elif site is None:
                 print(f"[WARN] account for session {session.id} is None")
+                
 
             loginform: Optional[aa_LoginForm] = aa_LoginForm.get_or_none(
                 site=session.account.website.site, success=True
