@@ -49,7 +49,7 @@ def download_and_unzip(url, save_folder):
             )
 
 
-def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int):
+def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int, job: str):
     """Prepare the crawl tasks for account automation."""
 
     # Prepare date if needed
@@ -90,10 +90,10 @@ def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int):
                 t_rank=rank,
                 c_bucket=bucket,
                 crux_date=date,
-                tranco_date="2023-01-30",
+                tranco_date="2024-01-30",
             )
             task: aa_Task = aa_Task.create(
-                job=datetime.now().strftime("%Y%m%d"),
+                job=job,
                 site=site,
                 url=origin,
                 landing_page=(origin + "/"),
@@ -101,7 +101,8 @@ def _prepare_aa_urls(crux_link: str, line_start: int, line_end: int):
             )
 
 def find_login_registration_forms(
-    crawlers:int
+    crawlers:int,
+    job: str,
 ) -> int:
     try:
         aa = subprocess.Popen(
@@ -111,7 +112,7 @@ def find_login_registration_forms(
                 "--modules",
                 "FindRegistrationForms FindLoginForms",
                 "--job",
-                datetime.now().strftime("%Y%m%d"),
+                job,
                 "--crawlers",
                 str(crawlers),
             ]
@@ -121,9 +122,11 @@ def find_login_registration_forms(
         traceback.print_exc()
         print(e)
         return 1
+    
+    return 0
 
 def crux_main(
-    crux_link: str, start: int, count: int, identities: List[int], crawlers: int
+    crux_link: str, start: int, count: int, identities: List[int], crawlers: int, job: str
 ) -> int:
     """Starts the account automation to find login and registration forms, and prepares manual registration tasks
 
@@ -138,21 +141,21 @@ def crux_main(
 
     # Prepare the account automation
     end = start + count - 1
-    _prepare_aa_urls(crux_link, start, end)
+    _prepare_aa_urls(crux_link, start, end, job)
 
     # Search for registration and login forms with <CRAWLERS> crawlers
     print(
             f"Searching for Login and Registration Forms on {count} Websites with {crawlers} parallel crawlers. This might take a while."
         )
-    code = find_login_registration_forms(crawlers)
+    code = find_login_registration_forms(crawlers, job)
     if code != 0:
         return code
 
     print("Finished searching for forms. Adding Registration Tasks now.")
 
-    for identity in identities:
+    for identity_id in identities:
         # Add registration tasks for all sites where both registration and login form were discovered
-        subquery = db.RegisterTask.select(db.RegisterTask.website)
+        subquery = db.RegisterTask.select(db.RegisterTask.website).where(db.RegisterTask.identity == identity_id)
         subquery = db.Website.select(db.Website.site).where(db.Website.id.in_(subquery))
         sites_regform = (
             aa_RegistrationForm.select( # pylint: disable=used-before-assignment
@@ -161,6 +164,7 @@ def crux_main(
             .distinct()
             .where(aa_RegistrationForm.site.not_in(subquery))
         )
+        
         sites_loginregform = ( 
             aa_LoginForm.select( # pylint: disable=used-before-assignment
                 aa_LoginForm.site
@@ -169,7 +173,7 @@ def crux_main(
             .where(aa_LoginForm.site.in_(sites_regform))
         )
 
-        identity: db.Identity = db.Identity.get_by_id(identity)
+        identity: db.Identity = db.Identity.get_by_id(identity_id)
 
         # Iterate over sites with login and registration, schedule registration task
         for site in sites_loginregform:
@@ -177,9 +181,14 @@ def crux_main(
             db.RegisterTask.create(
                 website=website, identity=identity, account=None, recording=True
             )
-            url = aa_Task.get(site=site.site)
+            
+            try:
+                url = aa_Task.get(site=site.site)
+            except aa_Task.DoesNotExist:
+                continue
             website.landing_page = url.landing_page
             website.save()
+            
 
     return
 
@@ -235,7 +244,7 @@ def import_main(file: str) -> int:
             return 1
         
         
-        code = find_login_registration_forms(20)
+        code = find_login_registration_forms(20, datetime.now().strftime("%Y%m%d"))
         if code != 0:
             return code
         
@@ -391,6 +400,13 @@ if __name__ == "__main__":
     crux_subparser.add_argument(
         "--crawlers", type=int, default=20, help="How many crawlers to start"
     )
+    
+    crux_subparser.add_argument(    
+        "--job",
+        type=str,
+        default=datetime.now().strftime("%Y%m%d"),
+        help="Job name",
+    )
 
     # Import Sites from JSON export of the database
 
@@ -443,7 +459,7 @@ if __name__ == "__main__":
 
         sys.exit(
             crux_main(
-                args.crux_link, args.start, args.count, args.identity, args.crawlers
+                args.crux_link, args.start, args.count, args.identity, args.crawlers, args.job
             )
         )
 

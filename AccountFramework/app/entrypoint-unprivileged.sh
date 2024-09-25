@@ -16,14 +16,7 @@ source $IDENTITY_FILE
 if [[ -z "$WORKER" ]]; then
     # Bitwarden: Login, start HTTP API
     if [[ "$use_bitwarden" == "True" ]]; then
-        bw login --apikey
-        bw serve --port 9999 --hostname 0.0.0.0 &
-
-        # Wait for BW API to start
-        sleep 10
-
-        # Unlock BW API
-        curl -X POST http://0.0.0.0:9999/unlock -d "{\"password\": \"${BW_PASSWORD}\"}" -H 'Content-Type: application/json'
+        bash bw_heartbeat.sh $BW_PASSWORD &
     fi
     # Setup db, rerun documentation creation, and generate export schemas
     python3 db.py

@@ -100,7 +100,10 @@ Getting websites into the Account Framework can be done in two main ways:
 
 #### (1) Search for Registration and Login Forms
 
-Run the following to start automatic crawling for registration/login URLs for the first 10 origins of CrUX December 2022: `DISPLAY=:99 python3 prepare.py crux --count 10 --crux_link https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/202212.csv.gz --identity 1`
+Run the following to start automatic crawling for registration/login URLs for the first 10 origins of CrUX December 2022: 
+```
+DISPLAY=:99 python3 prepare.py crux --count 10 --crux_link https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/202212.csv.gz --identity 1
+```
 - Note that CrUX contains origins and only the first one is used per site/etld+1
 
 #### (2) Import data from other studies using the account framework

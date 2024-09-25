@@ -138,7 +138,7 @@ def expire_old_sessions(sessions: list[db.Session]) -> list[db.Session]:
     return usable_sessions
 
 
-def handle_get_session(experiment: str, site=None):
+def handle_get_session(experiment: str, site=None, account_id=None):
     """Handle a session request. An experiment name is required. Optional a site can be specified to request a session for that specific site."""
     global SESSION_FILE_PATH
     print(f"Get session for experiment: {experiment}")
@@ -162,12 +162,18 @@ def handle_get_session(experiment: str, site=None):
 
     # If a specific site is requested
     # Return a session for the requested site (regardless of whether it was used already by the experiment)
-    if site:
+    if site or account_id:
         print(f"{site} requested by {experiment}")
         # Iterate over all available sessions; if one fits use it
         new_sessions = []
         for session in sessions:
+            
             if session.account.website.site == site:
+                print(session, account_id)
+            
+            if (not site or session.account.website.site == site) and (
+                not account_id or session.account.id == account_id
+            ):
                 new_sessions = [session]
                 break
         sessions = new_sessions
@@ -359,25 +365,31 @@ def handle_get_sessions(experiment: str, site=None, k=2):
 
             # Remember the website and do not hand it out again to the same experiment (if no specific site is requested)
             if session.account and site is None:
-                
-                if (db.ExperimentWebsite.select().where(
-                    db.ExperimentWebsite.experiment == experiment,
-                    db.ExperimentWebsite.website == session.account.website)).count() == 0:
-                
+
+                if (
+                    db.ExperimentWebsite.select().where(
+                        db.ExperimentWebsite.experiment == experiment,
+                        db.ExperimentWebsite.website == session.account.website,
+                    )
+                ).count() == 0:
+
                     _, created = db.ExperimentWebsite.get_or_create(
                         website=session.account.website,
                         experiment=experiment,
                         session=session,
                     )
-                    
+
                     if created:
-                        print(f"[INFO] experiment website set for session {session.id}: {site}")
-                        
+                        print(
+                            f"[INFO] experiment website set for session {session.id}: {site}"
+                        )
+
                 else:
-                    print(f"[INFO] experiment website already set for session {session.id}: {site}")
+                    print(
+                        f"[INFO] experiment website already set for session {session.id}: {site}"
+                    )
             elif site is None:
                 print(f"[WARN] account for session {session.id} is None")
-                
 
             loginform: Optional[aa_LoginForm] = aa_LoginForm.get_or_none(
                 site=session.account.website.site, success=True
@@ -441,11 +453,17 @@ if __name__ == "__main__":
                 if request["type"] == "get_session":
                     handle_get_session(request["experiment"])
                 elif request["type"] == "get_specific_session":
-                    handle_get_session(request["experiment"], request["site"])
+                    handle_get_session(
+                        request["experiment"],
+                        request["site"],
+                        request.get("account_id", None),
+                    )
                 elif request["type"] == "get_sessions":
                     handle_get_sessions(request["experiment"], k=request.get("k", 2))
                 elif request["type"] == "get_specific_sessions":
-                    handle_get_sessions(request["experiment"], request["site"], k=request.get("k", 2))
+                    handle_get_sessions(
+                        request["experiment"], request["site"], k=request.get("k", 2)
+                    )
                 elif request["type"] == "unlock_session":
                     handle_unlock_session(request["experiment"], request["session_id"])
                 else:

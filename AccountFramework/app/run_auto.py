@@ -22,6 +22,7 @@ def print(*args, **kw):
 
 class Tee(object):
     """Helper for better logging (to a file)."""
+
     def __init__(self, filename, name):
         self.file = open(f"{filename}", "a")
         self.stdout = sys.stdout
@@ -106,9 +107,27 @@ def run_task(task_id: db.Task, task_type: str, task_timeout: int = 600):
                 )
 
 
+def cleanup_tasks():
+
+    # validate tasks
+    db.ValidateTask.update(status="free", actor="").where(
+        db.ValidateTask.status.in_(["selected", "processing"])
+    ).execute()
+
+    # login tasks
+    db.LoginTask.update(status="free", actor="").where(
+        db.LoginTask.status.in_(["selected", "processing"]),
+        db.LoginTask.task_type == "auto",
+    ).execute()
+
+
 def main(num_workers: int):
     """Loop foreven and start auto tasks if available."""
     p = Pool(processes=num_workers)
+
+    # Cleanup tasks
+    cleanup_tasks()
+
     # Main loop
     print_sleep = True
     print(f"Start run_auto with {num_workers} workers.")
