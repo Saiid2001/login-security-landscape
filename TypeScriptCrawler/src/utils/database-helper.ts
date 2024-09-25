@@ -59,7 +59,7 @@ class DatabaseHelper {
      */
     static async setup() {
         // Initialize database tables based on provided models
-        await sequelize.sync({ force: true })
+        await sequelize.sync({ alter: true })
     }
 
     /**
